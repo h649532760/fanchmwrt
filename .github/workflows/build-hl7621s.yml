@@ -315,10 +315,20 @@ jobs:
           NETWORK_FILE="target/linux/ramips/mt7621/base-files/etc/board.d/02_network"
           
           if [ -f "$NETWORK_FILE" ]; then
-            sed -i '/^esac$/i \
-          hailin,hl7621-s)\\
-          \tucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"\\
-          \t;;' "$NETWORK_FILE"
+            # 在 esac 前插入 HL7621-S 的 case 分支
+            # 使用临时文件避免 sed 在 YAML 多行字符串中的转义问题
+            BOARD_NAME="hailin,hl7621-s"
+            grep -q "$BOARD_NAME" "$NETWORK_FILE" || {
+              awk -v board="$BOARD_NAME" '
+                /^esac$/ {
+                  print board ")";
+                  print "\tucidef_set_interfaces_lan_wan \"lan1 lan2 lan3 lan4\" \"wan\"";
+                  print "\t;;";
+                }
+                { print }
+              ' "$NETWORK_FILE" > /tmp/02_network_tmp
+              mv /tmp/02_network_tmp "$NETWORK_FILE"
+            }
           else
             mkdir -p target/linux/ramips/mt7621/base-files/etc/board.d/
             cat > "$NETWORK_FILE" << 'NETEOF'
