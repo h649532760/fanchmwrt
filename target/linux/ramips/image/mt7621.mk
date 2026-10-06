@@ -3870,3 +3870,17 @@ define Device/zyxel_wsm20
   KERNEL_INITRAMFS := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb | znet-header V1.00(ABZF.0)C0
 endef
 TARGET_DEVICES += zyxel_wsm20
+
+define Device/hailin_hl7621-s
+  $(Device/dsa-migration)
+  IMAGE_SIZE := 16064k
+  DEVICE_VENDOR := Hailin
+  DEVICE_MODEL := HL7621-S
+  DEVICE_PACKAGES := kmod-usb3 kmod-usb-storage kmod-fs-ext4 kmod-fs-ntfs \
+	kmod-sdhci-mt7620 kmod-rtc-pcf8563 kmod-ath9k wpad-basic-mbedtls \
+	kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-usb-serial-option kmod-usb-acm \
+	modemmanager luci-proto-modemmanager usb-modeswitch usb-modeswitch-data \
+	block-mount
+endef
+TARGET_DEVICES += hailin_hl7621-s
+
