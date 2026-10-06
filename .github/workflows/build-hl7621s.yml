@@ -44,7 +44,7 @@ jobs:
           df -h
 
       - name: Checkout FanchmWrt source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: fanchmwrt/fanchmwrt
           ref: ${{ github.event.inputs.branch }}
@@ -392,12 +392,16 @@ jobs:
           # ========== RTC ==========
           CONFIG_PACKAGE_kmod-rtc-pcf8563=y
           
-          # ========== Docker (256MB RAM) ==========
+          # ========== Docker 显式禁用 (256MB RAM 不足) ==========
+          CONFIG_PACKAGE_docker=n
+          CONFIG_PACKAGE_dockerd=n
+          CONFIG_PACKAGE_containerd=n
+          CONFIG_PACKAGE_runc=n
+          
+          # ========== 网络工具 ==========
           CONFIG_PACKAGE_kmod-ipt-ipset=y
           CONFIG_PACKAGE_kmod-br-netfilter=y
           CONFIG_PACKAGE_kmod-nf-ipvs=y
-          CONFIG_PACKAGE_docker=y
-          CONFIG_PACKAGE_dockerd=y
           
           # ========== LuCI ==========
           CONFIG_PACKAGE_luci=y
@@ -436,31 +440,51 @@ jobs:
 
       - name: Build firmware
         id: build1
-        continue-on-error: true
         run: |
-          make -j$(nproc) 2>&1 | tail -100
+          set -o pipefail
+          make -j$(nproc) V=s 2>&1 | tee build.log
+          echo "Build exit code: $?"
         env:
           FORCE_UNSAFE_CONFIGURE: 1
 
-      - name: Retry with verbose on failure
-        if: steps.build1.outcome == 'failure'
+      - name: Show build errors
+        if: failure()
         run: |
-          echo "Build failed, retrying verbose..."
-          make V=s -j1 2>&1 | tail -300
-        env:
-          FORCE_UNSAFE_CONFIGURE: 1
+          echo "=== Last 100 lines of build log ==="
+          tail -100 build.log
+          echo ""
+          echo "=== Error patterns ==="
+          grep -i "error\|fail\|not found\|undefined" build.log | tail -50
 
       - name: Collect artifacts
+        if: always()
         run: |
           mkdir -p output
+          
+          # Copy firmware files
+          find bin/targets/ramips/mt7621/ -name "*hailin*" -type f 2>/dev/null | head -20
           cp -f bin/targets/ramips/mt7621/*hailin* output/ 2>/dev/null || true
           cp -f bin/targets/ramips/mt7621/*.manifest output/ 2>/dev/null || true
           
+          # If no device-specific files, copy all bin files
           if [ -z "$(ls -A output/*hailin* 2>/dev/null)" ]; then
+            echo "No device-specific files found, copying all bin files..."
             cp -f bin/targets/ramips/mt7621/*.bin output/ 2>/dev/null || true
+            cp -f bin/targets/ramips/mt7621/*.manifest output/ 2>/dev/null || true
           fi
           
-          ls -lh output/
+          # Copy build log for debugging
+          cp -f build.log output/ 2>/dev/null || true
+          
+          echo "=== Output directory contents ==="
+          ls -lh output/ 2>/dev/null || echo "Output directory is empty or does not exist"
+          
+          # Check if any firmware was built
+          if [ -z "$(ls -A output/ 2>/dev/null)" ]; then
+            echo "ERROR: No files in output directory"
+            echo "Checking bin/targets directory..."
+            ls -la bin/targets/ramips/mt7621/ 2>/dev/null || echo "bin/targets/ramips/mt7621/ does not exist"
+          fi
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
