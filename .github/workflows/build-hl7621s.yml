@@ -12,11 +12,11 @@
 #   3. 将本文件内容粘贴进去
 #   4. Actions → Run workflow → 等待 30-60 分钟 → 下载固件
 #
-# ⚠️ GPIO19 冲突说明：
-#   GPIO19 = PERST_N 复用引脚，数据手册定义为 PCIe 复位信号。
-#   本设备 WiFi (AR9287) 走 PCIe0，需要 PERST_N 正常工作。
-#   原厂 4G 模块电源控制也接在 GPIO19，两者存在冲突。
-#   如需同时使用 4G 和 WiFi，需将 4G 电源改接到其他空闲 GPIO。
+# ✅ GPIO 分配（根据 PCB 丝印确认）：
+#   GPIO13 = 4G 模块电源 (POWER 4G)
+#   GPIO14/16 = WiFi 控制
+#   GPIO19 = PERST_N (PCIe 复位，由内核自动管理)
+#   4G 和 WiFi 不冲突，可同时使用
 # =============================================================================
 
 name: Build FanchmWrt for HL7621-S
@@ -126,20 +126,19 @@ jobs:
           		};
           	};
           
-          	/* 4G 模块电源控制
-          	 * 警告：GPIO19 = PERST_N 复用引脚，已用于 PCIe WiFi (AR9287) 复位
-          	 * 如启用 PCIe WiFi，此引脚不能再用于 4G 模块电源控制
-          	 * 建议：将 4G 模块电源改接到其他 GPIO（如 GPIO20 或 GPIO21）
+          	/* GPIO 导出控制（根据 PCB 丝印）
+          	 * GPIO13 = 4G 模块电源 (POWER 4G)
+          	 * GPIO14/16 = WiFi 控制 (由驱动自动管理)
+          	 * GPIO19 = PERST_N (PCIe 复位，由内核自动管理)
           	 */
           	gpio-export {
           		compatible = "gpio-export";
           
-          		/* 如需同时使用 4G 和 WiFi，取消下面注释并修改为其他 GPIO */
-          		/* modem_power {
+          		modem_power {
           			gpio-export,name = "modem_power";
           			gpio-export,output = <1>;
-          			gpios = <&gpio 20 GPIO_ACTIVE_HIGH>;
-          		}; */
+          			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+          		};
           	};
           
           	i2c {
@@ -213,7 +212,8 @@ jobs:
           	};
           };
           
-          /* PCIe WiFi: Atheros AR5BHB116 (AR9287, ath9k 驱动, Mini PCIe 双频) */
+          /* PCIe WiFi: Atheros AR5BHB116 (AR9287, ath9k 驱动, Mini PCIe 双频)
+           * GPIO19 = PERST_N 由 PCIe 子系统自动管理 */
           &pcie {
           	status = "okay";
           };
