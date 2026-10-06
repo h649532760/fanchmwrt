@@ -38,7 +38,7 @@ jobs:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
-          sudo apt purge || true -y '^ghc-.*' '^dotnet-.*' '^llvm-.*' 'php.*' 'mongodb.*' '^mysql.*'
+          sudo apt purge -y '^ghc-.*' '^dotnet-.*' '^llvm-.*' '^mysql.*' || true
           sudo apt autoremove -y
           sudo apt clean
           df -h
