@@ -10,7 +10,8 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
-        path: fanchmwrt
+        with:
+          path: fanchmwrt
 
       - name: Install Build Dependencies
         run: |
