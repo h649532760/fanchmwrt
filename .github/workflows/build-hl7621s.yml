@@ -23,20 +23,18 @@ jobs:
           cd fanchmwrt
           make defconfig
           ./scripts/gen_config.py target ramips mt7621
-          cat >> .config <<'EOF'
-CONFIG_TARGET_ramips=y
-CONFIG_TARGET_ramips_mt7621=y
-CONFIG_TARGET_ramips_mt7621_DEVICE_hailin_hl7621-s=y
-CONFIG_KERNEL_DEBUG_INFO=n
-CONFIG_KERNEL_DEBUG_FS=n
-CONFIG_KERNEL_KGDB=n
-CONFIG_PACKAGE_kmod-pcie-mt=m
-CONFIG_PACKAGE_kmod-ath9k=m
-CONFIG_PACKAGE_kmod-usb3=m
-CONFIG_PACKAGE_kmod-sdhci-mt7620=m
-CONFIG_PACKAGE_kmod-i2c-gpio=m
-CONFIG_PACKAGE_kmod-rtc-pcf8563=m
-EOF
+          echo "CONFIG_TARGET_ramips=y" >> .config
+          echo "CONFIG_TARGET_ramips_mt7621=y" >> .config
+          echo "CONFIG_TARGET_ramips_mt7621_DEVICE_hailin_hl7621-s=y" >> .config
+          echo "CONFIG_KERNEL_DEBUG_INFO=n" >> .config
+          echo "CONFIG_KERNEL_DEBUG_FS=n" >> .config
+          echo "CONFIG_KERNEL_KGDB=n" >> .config
+          echo "CONFIG_PACKAGE_kmod-pcie-mt=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-ath9k=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb3=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-sdhci-mt7620=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-i2c-gpio=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-rtc-pcf8563=m" >> .config
           make oldconfig
 
       - name: Compile Firmware
