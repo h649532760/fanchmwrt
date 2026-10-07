@@ -1,0 +1,28 @@
+#!/etc/init.d/modem-power
+
+START=99
+STOP=01
+
+start() {
+	# 4G Modem Power GPIO13
+	echo 13 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio13/direction
+	echo 1 > /sys/class/gpio/gpio13/value
+
+	# PCIe WiFi PERST# GPIO19 reset after kernel boot
+	echo 19 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio19/direction
+	echo 0 > /sys/class/gpio/gpio19/value
+	sleep 0.2
+	echo 1 > /sys/class/gpio/gpio19/value
+
+	echo "Modem Power On + PCIe PERST Reset OK"
+}
+
+stop() {
+	echo 0 > /sys/class/gpio/gpio13/value
+	echo 0 > /sys/class/gpio/gpio19/value
+	echo 19 > /sys/class/gpio/unexport
+	echo 13 > /sys/class/gpio/unexport
+	echo "Modem Power Off"
+}
