@@ -3881,6 +3881,6 @@ define Device/hailin_hl7621-s
   KERNEL_SIZE := 2560k
   DEVICE_PACKAGES := kmod-pcie-mt kmod-ath9k kmod-usb3 kmod-sdhci-mt7620 kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-i2c-gpio kmod-rtc-pcf8563 kmod-usb-serial option usb-modeswitch modem-power luci-app-modeminfo
 endef
-TARGET_DEVICES += hail in_hl7621-s
+TARGET_DEVICES += hailin_hl7621-s
 
 
