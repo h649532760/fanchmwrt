@@ -3871,16 +3871,16 @@ define Device/zyxel_wsm20
 endef
 TARGET_DEVICES += zyxel_wsm20
 
+# Hailin HL7621-S MT7621 16M Flash 256M DDR3
+# KERNEL_SIZE limit 2560K for old U-Boot 1.1.3
 define Device/hailin_hl7621-s
-  $(Device/dsa-migration)
-  IMAGE_SIZE := 16064k
+  $(Device/mt7621)
   DEVICE_VENDOR := Hailin
   DEVICE_MODEL := HL7621-S
-  DEVICE_PACKAGES := kmod-usb3 kmod-usb-storage kmod-fs-ext4 kmod-fs-ntfs \
-	kmod-sdhci-mt7620 kmod-rtc-pcf8563 kmod-ath9k wpad-basic-mbedtls \
-	kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-usb-serial-option kmod-usb-acm \
-	modemmanager luci-proto-modemmanager usb-modeswitch usb-modeswitch-data \
-	block-mount
+  DEVICE_DTS := mt7621_hailin_hl7621-s
+  KERNEL_SIZE := 2560k
+  DEVICE_PACKAGES := kmod-pcie-mt kmod-ath9k kmod-usb3 kmod-sdhci-mt7620 kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-i2c-gpio kmod-rtc-pcf8563 kmod-usb-serial option usb-modeswitch modem-power luci-app-modeminfo
 endef
-TARGET_DEVICES += hailin_hl7621-s
+TARGET_DEVICES += hail in_hl7621-s
+
 
