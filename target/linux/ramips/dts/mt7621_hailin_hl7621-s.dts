@@ -1,33 +1,17 @@
-// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-// DTS for Hailin HL7621-S (4G Industrial Router)
-// 适配 fanchmwrt (基于 OpenWrt 25.12 / Linux 6.x)
-//
-// 硬件规格（根据 PCB 丝印确认）：
-//   SoC:    MT7621AT 双核 880MHz
-//   RAM:    256MB DDR3
-//   Flash:  16MB SPI NOR (40MHz)
-//   WiFi:   Atheros AR5BHB116 (AR9287, Mini PCIe, 2.4G+5G 双频, ath9k)
-//   4G:     移远 EC20/EC25（USB，GPIO13 电源控制）
-//   USB:    USB 3.0 (xHCI)
-//   SD:     SDHCI (SD 卡槽)
-//   RTC:    PCF8563 (I2C GPIO 模拟)
-//   UART:   57600 baud
-//   LAN:    4× LAN + 1× WAN
-//
-// PCB 丝印 GPIO 分配：
-//   GPIO0  → 电源 LED (蓝)
-//   GPIO1  → WiFi LED (绿)
-//   GPIO2  → 4G LED (绿)
-//   GPIO3/4 → I2C SDA/SCL (RTC PCF8563)
-//   GPIO13 → 4G 模块电源控制 (POWER 4G)
-//   GPIO14 → WiFi 控制
-//   GPIO16 → WiFi 控制 (WIFI)
-//   GPIO17 → LED17
-//   GPIO18 → Reset 按键
-//   GPIO19 → PERST_N (PCIe 复位，专用于 WiFi AR9287)
-
-/dts-v1/;
-
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Hailin HL7621-S MT7621 16M Flash 256M DDR3
+ * U-Boot 1.1.3 old version, DO NOT add static pcie child node
+ * GPIO:
+ * GPIO0  -> Blue Power LED (Active Low)
+ * GPIO1  -> WiFi LED (Active Low)
+ * GPIO2  -> 4G Modem LED (Active Low)
+ * GPIO3  -> I2C SDA for PCF8563 RTC
+ * GPIO4  -> I2C SCL for PCF8563 RTC
+ * GPIO13 -> 4G Modem Power Control (Output High = Power On)
+ * GPIO18 -> Reset Button (Active Low)
+ * GPIO19 -> PCIe WiFi PERST# (User script control, DTS no binding)
+*/
 #include "mt7621.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
@@ -47,29 +31,8 @@
 	};
 
 	chosen {
-		bootargs = "console=ttyS0,57600";
+		bootargs = "console=ttyS0,115200";
 		stdout-path = &uartlite;
-	};
-
-	leds {
-		compatible = "gpio-leds";
-
-		led_power: led-0 {
-			function = LED_FUNCTION_POWER;
-			color = <LED_COLOR_ID_BLUE>;
-			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
-		};
-
-		led-1 {
-			function = LED_FUNCTION_WLAN;
-			color = <LED_COLOR_ID_GREEN>;
-			gpios = <&gpio 1 GPIO_ACTIVE_LOW>;
-		};
-
-		led_4g: led-2 {
-			label = "green:4g";
-			gpios = <&gpio 2 GPIO_ACTIVE_LOW>;
-		};
 	};
 
 	keys {
@@ -82,29 +45,38 @@
 		};
 	};
 
-	/* GPIO 导出控制
-	 * GPIO13 = 4G 模块电源 (POWER 4G)
-	 * GPIO14/GPIO16 = WiFi 控制 (PCB 丝印: GPIO16 WIFI GPIO14)
-	 * GPIO19 = PERST_N (PCIe 复位，由内核 PCIe 子系统自动管理)
-	 */
-	gpio-export {
-		compatible = "gpio-export";
+	leds {
+		compatible = "gpio-leds";
 
-		modem_power {
-			gpio-export,name = "modem_power";
-			gpio-export,output = <1>;
-			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		led_power: power {
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_BLUE>;
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+		};
+
+		wifi {
+			function = LED_FUNCTION_WLAN;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&gpio 1 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "phy0tpt";
+		};
+
+		modem {
+			function = LED_FUNCTION_INDICATOR;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&gpio 2 GPIO_ACTIVE_LOW>;
 		};
 	};
 
-	/* I2C GPIO 模拟（用于 RTC PCF8563） */
 	i2c {
 		compatible = "i2c-gpio";
-		sda-gpios = <&gpio 3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
-		scl-gpios = <&gpio 4 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		sda-gpios = <&gpio 3 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&gpio 4 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
 		i2c-gpio,delay-us = <5>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 
-		rtc@51 {
+		pcf8563@51 {
 			compatible = "nxp,pcf8563";
 			reg = <0x51>;
 		};
@@ -126,19 +98,19 @@
 
 			partition@0 {
 				label = "u-boot";
-				reg = <0x0 0x30000>;
+				reg = <0x000000 0x030000>;
 				read-only;
 			};
 
 			partition@30000 {
 				label = "u-boot-env";
-				reg = <0x30000 0x10000>;
+				reg = <0x030000 0x010000>;
 				read-only;
 			};
 
 			factory: partition@40000 {
 				label = "factory";
-				reg = <0x40000 0x10000>;
+				reg = <0x040000 0x010000>;
 				read-only;
 
 				nvmem-layout {
@@ -146,15 +118,10 @@
 					#address-cells = <1>;
 					#size-cells = <1>;
 
-					eeprom_factory_0: eeprom@0 {
-						reg = <0x0 0x4da8>;
-					};
-
-					eeprom_factory_8000: eeprom@8000 {
+					eeprom_wifi: eeprom@8000 {
 						reg = <0x8000 0x4da8>;
 					};
-
-					macaddr_factory_e000: macaddr@e000 {
+					macaddr_gmac0: macaddr@e000 {
 						reg = <0xe000 0x6>;
 					};
 				};
@@ -163,31 +130,20 @@
 			partition@50000 {
 				compatible = "denx,uimage";
 				label = "firmware";
-				reg = <0x50000 0xfb0000>;
+				reg = <0x050000 0xfb0000>;
 			};
 		};
 	};
 };
 
-/* PCIe WiFi: Atheros AR5BHB116 (AR9287, ath9k, Mini PCIe 双频)
- * GPIO19 = PERST_N 由 PCIe 子系统自动管理 */
 &pcie {
 	status = "okay";
-};
-
-&pcie0 {
-	wifi@0,0 {
-		compatible = "pci168c,002e";
-		reg = <0x0000 0 0 0 0>;
-		nvmem-cells = <&eeprom_factory_8000>;
-		nvmem-cell-names = "eeprom";
-		ieee80211-freq-limit = <2400000 2500000>, <5000000 6000000>;
-	};
+	/* No reset-gpios here, PERST# control in user script */
 };
 
 &gmac0 {
 	status = "okay";
-	nvmem-cells = <&macaddr_factory_e000>;
+	nvmem-cells = <&macaddr_gmac0>;
 	nvmem-cell-names = "mac-address";
 };
 
@@ -195,14 +151,8 @@
 	status = "okay";
 	label = "wan";
 	phy-handle = <&ethphy4>;
-
-	nvmem-cells = <&macaddr_factory_e000>;
-	nvmem-cell-names = "mac-address";
-	mac-address-increment = <1>;
-};
-
-&ethphy4 {
-	/delete-property/ interrupts;
+	nvmem-cells = <&macaddr_gmac0>;
+	nvmem-cell-names = "mac-address-increment";
 };
 
 &switch0 {
@@ -211,20 +161,21 @@
 			status = "okay";
 			label = "lan1";
 		};
-
 		port@1 {
 			status = "okay";
 			label = "lan2";
 		};
-
 		port@2 {
 			status = "okay";
 			label = "lan3";
 		};
-
 		port@3 {
 			status = "okay";
 			label = "lan4";
+		};
+		port@4 {
+			status = "okay";
+			phy-mode = "rgmii";
 		};
 	};
 };
