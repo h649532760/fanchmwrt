@@ -264,7 +264,7 @@ jobs:
           		function = "gpio";
           	};
           };
-DTSEOF
+          DTSEOF
           echo '--- DTS sanity ---'
           grep -n 'memory@0\|pci168c,2c\|0x10000000' target/linux/ramips/dts/mt7621_hailin_hl7621-s.dts
 
@@ -284,7 +284,7 @@ DTSEOF
               block-mount
           endef
           TARGET_DEVICES += hailin_hl7621-s
-MKEOF
+          MKEOF
           tail -15 target/linux/ramips/image/mt7621.mk
 
       - name: Add HL7621-S network config
@@ -353,7 +353,7 @@ MKEOF
           # CONFIG_PACKAGE_dockerd is not set
           # CONFIG_PACKAGE_containerd is not set
           # CONFIG_PACKAGE_luci-app-dockerman is not set
-CONFIGEOF
+          CONFIGEOF
           make defconfig
 
       - name: Verify config
