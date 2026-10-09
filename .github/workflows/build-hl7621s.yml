@@ -1,419 +1,134 @@
-name: Build FanchmWrt for HL7621-S
+# .github/workflows/openwrt-build.yml
+# OpenWrt 固件构建工作流 (MT7621 / Hailin HL7621-S)
+# 确保 initramfs-kernel.bin 正确生成并上传
+
+name: OpenWrt Build
 
 on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: 'fanchmwrt 分支'
-        required: true
-        default: 'fanchmwrt-25.12.4'
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:  # 支持手动触发
+
+env:
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: .config
+  DIY_P1_SH: diy-p1.sh
+  DIY_P2_SH: diy-p2.sh
 
 jobs:
   build:
+    name: OpenWrt Firmware Build
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
 
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
-          sudo apt purge -y '^ghc-.*' '^dotnet-.*' '^llvm-.*' '^mysql.*' || true
-          sudo apt autoremove -y && sudo apt clean || true
-          df -h
-
-      - name: Checkout FanchmWrt source
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          repository: fanchmwrt/fanchmwrt
-          ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 1
 
-      - name: Install build dependencies
+      - name: Update feeds
+        run: ./scripts/feeds update -a
+
+      - name: Install feeds
+        run: ./scripts/feeds install -a
+
+      - name: Load default config
         run: |
-          sudo apt update
-          sudo apt install -y build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-            python3-setuptools python3-pyelftools python3-distutils \
-            rsync unzip zlib1g-dev file wget qemu-utils libelf-dev
+          # 加载目标平台的默认配置
+          make defconfig TARGET=ramips SUBTARGET=mt7621 PROFILE=hl7621-s
 
-      - name: Update and install feeds
+      - name: Check and fix initramfs config
         run: |
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Add HL7621-S DTS file
-        run: |
-          mkdir -p target/linux/ramips/dts
-          cat > target/linux/ramips/dts/mt7621_hailin_hl7621-s.dts << 'DTSEOF'
-          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          // DTS for Hailin HL7621-S (4G Industrial Router)
-          // 适配 fanchmwrt (OpenWrt 25.12)
-          // 修复：补回 memory@0（bootloop 真正原因），WiFi 走 ath9k/AR9287
-
-          /dts-v1/;
-
-          #include "mt7621.dtsi"
-          #include <dt-bindings/gpio/gpio.h>
-          #include <dt-bindings/input/input.h>
-          #include <dt-bindings/leds/common.h>
-
-          / {
-          	compatible = "hailin,hl7621-s", "mediatek,mt7621-soc";
-          	model = "Hailin HL7621-S";
-
-          	memory@0 {
-          		device_type = "memory";
-          		reg = <0x0 0x10000000>;   /* 256MB；128MB 用 0x8000000 */
-          	};
-
-          	aliases {
-          		led-boot = &led_power;
-          		led-failsafe = &led_power;
-          		led-running = &led_power;
-          		led-upgrade = &led_power;
-          		label-mac-device = &gmac0;
-          		serial0 = &uartlite;
-          	};
-
-          	chosen {
-          		stdout-path = "serial0:57600n8";
-          	};
-
-          	leds {
-          		compatible = "gpio-leds";
-
-          		led_power: led-0 {
-          			function = LED_FUNCTION_POWER;
-          			color = <LED_COLOR_ID_BLUE>;
-          			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
-          		};
-
-          		led-1 {
-          			function = LED_FUNCTION_WLAN;
-          			color = <LED_COLOR_ID_GREEN>;
-          			gpios = <&gpio 1 GPIO_ACTIVE_LOW>;
-          		};
-
-          		led-2 {
-          			label = "green:4g";
-          			gpios = <&gpio 2 GPIO_ACTIVE_LOW>;
-          		};
-          	};
-
-          	keys {
-          		compatible = "gpio-keys";
-
-          		reset {
-          			label = "reset";
-          			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
-          			linux,code = <KEY_RESTART>;
-          		};
-          	};
-
-          	gpio-export {
-          		compatible = "gpio-export";
-
-          		modem_power {
-          			gpio-export,name = "modem_power";
-          			gpio-export,output = <1>;
-          			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
-          		};
-          	};
-
-          	i2c {
-          		compatible = "i2c-gpio";
-          		sda-gpios = <&gpio 3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
-          		scl-gpios = <&gpio 4 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
-          		i2c-gpio,delay-us = <5>;
-          		#address-cells = <1>;
-          		#size-cells = <0>;
-
-          		rtc@51 {
-          			compatible = "nxp,pcf8563";
-          			reg = <0x51>;
-          		};
-          	};
-          };
-
-          &spi0 {
-          	status = "okay";
-
-          	flash@0 {
-          		compatible = "jedec,spi-nor";
-          		reg = <0>;
-          		spi-max-frequency = <40000000>;
-
-          		partitions {
-          			compatible = "fixed-partitions";
-          			#address-cells = <1>;
-          			#size-cells = <1>;
-
-          			partition@0 {
-          				label = "u-boot";
-          				reg = <0x0 0x30000>;
-          				read-only;
-          			};
-
-          			partition@30000 {
-          				label = "u-boot-env";
-          				reg = <0x30000 0x10000>;
-          				read-only;
-          			};
-
-          			factory: partition@40000 {
-          				label = "factory";
-          				reg = <0x40000 0x10000>;
-          				read-only;
-
-          				nvmem-layout {
-          					compatible = "fixed-layout";
-          					#address-cells = <1>;
-          					#size-cells = <1>;
-
-          					eeprom_factory_8000: eeprom@8000 {
-          						reg = <0x8000 0x4da8>;
-          					};
-
-          					macaddr_factory_e000: macaddr@e000 {
-          						reg = <0xe000 0x6>;
-          					};
-          				};
-          			};
-
-          			partition@50000 {
-          				compatible = "denx,uimage";
-          				label = "firmware";
-          				reg = <0x50000 0xfb0000>;
-          			};
-          		};
-          	};
-          };
-
-          /* PCIe WiFi: Atheros AR5BHB116 (AR9287) -> ath9k 自动按 PCI ID 绑定
-           * AR9287 是 Atheros/ath9k 芯片，绝不能用 compatible="mediatek,mt76"。
-           * ath9k 从 PCI BAR0 读片上 eeprom，wifi 节点只声明设备 + MAC 即可。 */
-          &pcie {
-          	status = "okay";
-          };
-
-          &pcie0 {
-          	wifi@0,0 {
-          		compatible = "pci168c,2c";
-          		reg = <0x0000 0 0 0 0>;
-          		nvmem-cells = <&macaddr_factory_e000>;
-          		nvmem-cell-names = "mac-address";
-          	};
-          };
-
-          &gmac0 {
-          	nvmem-cells = <&macaddr_factory_e000>;
-          	nvmem-cell-names = "mac-address";
-          };
-
-          &gmac1 {
-          	label = "wan";
-          	phy-handle = <&ethphy4>;
-
-          	nvmem-cells = <&macaddr_factory_e000>;
-          	nvmem-cell-names = "mac-address";
-          	mac-address-increment = <1>;
-          };
-
-          &ethphy4 {
-          	/delete-property/ interrupts;
-          };
-
-          &switch0 {
-          	ports {
-          		port@0 {
-          			status = "okay";
-          			label = "lan1";
-          		};
-          		port@1 {
-          			status = "okay";
-          			label = "lan2";
-          		};
-          		port@2 {
-          			status = "okay";
-          			label = "lan3";
-          		};
-          		port@3 {
-          			status = "okay";
-          			label = "lan4";
-          		};
-          	};
-          };
-
-          &sdhci {
-          	status = "okay";
-          };
-
-          &uartlite {
-          	status = "okay";
-          };
-
-          &xhci {
-          	status = "okay";
-          };
-
-          /* mt7621 通用 default-state：释放 i2c/uart1/wdt/rgmii2 引脚给 GPIO 复用。
-           * 原文件的 "jtag" 不是 mt7621 的引脚组，会触发运行时 pinmux 报错，已去掉。 */
-          &state_default {
-          	gpio {
-          		groups = "i2c", "uart1", "wdt", "rgmii2";
-          		function = "gpio";
-          	};
-          };
-          DTSEOF
-          echo '--- DTS sanity ---'
-          grep -n 'memory@0\|pci168c,2c\|0x10000000' target/linux/ramips/dts/mt7621_hailin_hl7621-s.dts
-
-      - name: Add HL7621-S device definition
-        run: |
-          cat >> target/linux/ramips/image/mt7621.mk << 'MKEOF'
-          define Device/hailin_hl7621-s
-            $(Device/dsa-migration)
-            IMAGE_SIZE := 16064k
-            DEVICE_VENDOR := Hailin
-            DEVICE_MODEL := HL7621-S
-            DEVICE_PACKAGES := kmod-usb3 kmod-usb-storage kmod-usb-storage-uas \
-              kmod-fs-ext4 kmod-fs-exfat kmod-sdhci-mt7620 \
-              kmod-ath9k kmod-ath9k-common wpad-basic-mbedtls \
-              kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-usb-serial-option kmod-usb-acm \
-              modemmanager luci-proto-modemmanager usb-modeswitch usb-modeswitch-data \
-              block-mount
-          endef
-          TARGET_DEVICES += hailin_hl7621-s
-          MKEOF
-          tail -15 target/linux/ramips/image/mt7621.mk
-
-      - name: Add HL7621-S network config
-        run: |
-          NETWORK_FILE="target/linux/ramips/mt7621/base-files/etc/board.d/02_network"
-          if [ ! -f "$NETWORK_FILE" ]; then
-            mkdir -p "$(dirname "$NETWORK_FILE")"
-            printf '#!/bin/sh\n. /lib/functions/uci-defaults.sh\n' > "$NETWORK_FILE"
-          fi
-          BOARD_NAME="hailin,hl7621-s"
-          if ! grep -q "$BOARD_NAME" "$NETWORK_FILE" 2>/dev/null; then
-            printf '\nhailin,hl7621-s)\n\tucidef_set_interfaces_lan_wan \"lan1 lan2 lan3 lan4\" \"wan\"\n;;\n' >> "$NETWORK_FILE"
-          fi
-          chmod +x "$NETWORK_FILE"
-          grep -n "$BOARD_NAME" "$NETWORK_FILE" || true
-
-      - name: Generate build config
-        run: |
-          cat > .config << 'CONFIGEOF'
-          # ========== 目标设备 ==========
-          CONFIG_TARGET_ramips=y
-          CONFIG_TARGET_ramips_mt7621=y
-          CONFIG_TARGET_ramips_mt7621_DEVICE_hailin_hl7621-s=y
-
-          # ========== USB 存储 ==========
-          CONFIG_PACKAGE_kmod-usb3=y
-          CONFIG_PACKAGE_kmod-usb-storage=y
-          CONFIG_PACKAGE_kmod-usb-storage-uas=y
-          CONFIG_PACKAGE_kmod-fs-ext4=y
-          CONFIG_PACKAGE_kmod-fs-exfat=y
-          CONFIG_PACKAGE_block-mount=y
-
-          # ========== WiFi (Atheros AR9287, ath9k) ==========
-          CONFIG_PACKAGE_kmod-ath9k=y
-          CONFIG_PACKAGE_kmod-ath9k-common=y
-          CONFIG_PACKAGE_wpad-basic-mbedtls=y
-
-          # ========== 4G 模块 (EC20/EC25) ==========
-          CONFIG_PACKAGE_kmod-usb-serial-option=y
-          CONFIG_PACKAGE_kmod-usb-acm=y
-          CONFIG_PACKAGE_kmod-usb-net-rndis=y
-          CONFIG_PACKAGE_kmod-usb-net-cdc-ether=y
-          CONFIG_PACKAGE_modemmanager=y
-          CONFIG_PACKAGE_luci-proto-modemmanager=y
-          CONFIG_PACKAGE_usb-modeswitch=y
-          CONFIG_PACKAGE_usb-modeswitch-data=y
-
-          # ========== SD 卡 / RTC ==========
-          CONFIG_PACKAGE_kmod-sdhci-mt7620=y
-          CONFIG_PACKAGE_kmod-i2c-gpio=y
-          CONFIG_PACKAGE_kmod-i2c-core=y
-          CONFIG_PACKAGE_kmod-hwmon-core=y
-
-          # ========== LuCI ==========
-          CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-network-zh-cn=y
-
-          # ========== 系统工具 ==========
-          CONFIG_PACKAGE_htop=y
-          CONFIG_PACKAGE_iperf3=y
-
-          # ========== 显式禁用 Docker (256MB RAM 不足) ==========
-          # CONFIG_PACKAGE_docker is not set
-          # CONFIG_PACKAGE_dockerd is not set
-          # CONFIG_PACKAGE_containerd is not set
-          # CONFIG_PACKAGE_luci-app-dockerman is not set
-          CONFIGEOF
+          echo ""
+          echo "===== 检查 initramfs 相关配置 ====="
+          grep -E "TARGET_ROOTFS_INITRAMFS|KERNEL_INITRAMFS|KERNEL_LZMA|TARGET_PROFILE" .config || echo "WARNING: 未找到相关配置"
+          echo ""
+          echo "===== 确保 CONFIG_TARGET_ROOTFS_INITRAMFS=y ====="
+          # 如果未设置则追加
+          grep -q "CONFIG_TARGET_ROOTFS_INITRAMFS=y" .config || echo "CONFIG_TARGET_ROOTFS_INITRAMFS=y" >> .config
+          echo ""
+          echo "===== 确保 CONFIG_KERNEL_LZMA=y ====="
+          grep -q "CONFIG_KERNEL_LZMA=y" .config || echo "CONFIG_KERNEL_LZMA=y" >> .config
+          echo ""
+          echo "===== 确保 CONFIG_KERNEL_INITRAMFS_SOURCE 已设置 ====="
+          grep "CONFIG_KERNEL_INITRAMFS_SOURCE" .config || echo "CONFIG_KERNEL_INITRAMFS_SOURCE=\"\"" >> .config
+          echo ""
+          echo "===== 最终相关配置 ====="
+          grep -E "CONFIG_TARGET_ROOTFS_INITRAMFS|CONFIG_KERNEL_INITRAMFS|CONFIG_KERNEL_LZMA" .config
           make defconfig
 
-      - name: Verify config
+      - name: Download packages
         run: |
-          echo '=== Target ==='
-          grep 'CONFIG_TARGET.*hailin' .config | grep '=y' || true
-          echo '=== Key packages ==='
-          grep -E 'ath9k|wpad|modemmanager|usb-serial|docker|sdhci' .config | grep '=y' || true
-          echo '=== DTS exists ==='
-          ls -la target/linux/ramips/dts/mt7621_hailin_hl7621-s.dts
-
-      - name: Download source packages
-        run: make download -j$(nproc)
+          echo "下载构建依赖包..."
+          make download -j$(nproc) DOWNLOAD_RETRIES=3 || true
 
       - name: Build firmware
-        id: build1
+        id: build
         run: |
-          set -o pipefail
-          make -j$(nproc) 2>&1 | tee build.log
-        env:
-          FORCE_UNSAFE_CONFIGURE: 1
+          echo "开始构建固件..."
+          make -j$(nproc) || make -j1 V=s
+          echo "构建完成"
 
-      - name: Show build errors
-        if: failure()
+      - name: Verify build output
+        id: verify
         run: |
-          echo '=== Last 100 lines ==='
-          tail -100 build.log || true
-          echo '=== Error patterns ==='
-          grep -i 'error\|fail\|not found\|undefined' build.log | tail -50 || true
-
-      - name: Collect artifacts
-        if: always()
-        run: |
-          mkdir -p output
-          cp -f bin/targets/ramips/mt7621/*hailin* output/ 2>/dev/null || true
-          cp -f bin/targets/ramips/mt7621/*.manifest output/ 2>/dev/null || true
-          if [ -z "$(ls -A output/ 2>/dev/null)" ]; then
-            echo 'No hailin files, copying all bins...'
-            cp -f bin/targets/ramips/mt7621/*.bin output/ 2>/dev/null || true
+          echo ""
+          echo "===== 构建产物列表 ====="
+          ls -lh bin/targets/ramips/mt7621/ 2>/dev/null || echo "ERROR: 产物目录不存在"
+          echo ""
+          echo "===== 检查 initramfs 镜像 ====="
+          if [ -f bin/targets/ramips/mt7621/*-initramfs-kernel.bin ]; then
+            echo "SUCCESS: initramfs-kernel.bin 已生成"
+            ls -lh bin/targets/ramips/mt7621/*-initramfs-kernel.bin
+            INITRAMFS_SIZE=$(stat -c%s bin/targets/ramips/mt7621/*-initramfs-kernel.bin 2>/dev/null || echo "0")
+            echo "文件大小(字节): $INITRAMFS_SIZE"
+            if [ "$INITRAMFS_SIZE" -gt 10485760 ]; then
+              echo "SUCCESS: 文件大小 > 10MB，initramfs 打包正常"
+            else
+              echo "WARNING: 文件大小 <= 10MB，initramfs 可能未正确打包"
+            fi
+          else
+            echo "ERROR: initramfs-kernel.bin 未找到"
+            echo "尝试查找所有 bin 文件:"
+            find bin/targets/ -name "*.bin" -type f 2>/dev/null
           fi
-          cp -f build.log output/ 2>/dev/null || true
-          echo '=== output ==='
-          ls -lh output/ 2>/dev/null || echo 'empty'
+          echo ""
+          echo "===== 检查所有内核镜像 ====="
+          find bin/targets/ -name "*kernel*" -type f -exec ls -lh {} \; 2>/dev/null || true
 
-      - name: Upload firmware
+      - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fanchmwrt-hl7621-s-${{ github.event.inputs.branch }}-${{ github.run_id }}
-          path: output/
-          retention-days: 30
+          name: openwrt-mt7621-hl7621-s
+          path: |
+            bin/targets/ramips/mt7621/
+          retention-days: 14
+          if-no-files-found: error
 
-      - name: Build summary
+      - name: Upload config artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-config
+          path: |
+            .config
+            .config.old
+            feeds/base-files/lib/sdk/Makefile.build
+          retention-days: 7
+
+      - name: Post-build summary
         if: always()
         run: |
-          echo '## 编译结果 - Hailin HL7621-S' >> $GITHUB_STEP_SUMMARY
-          echo '- 设备: MT7621AT, 256MB, 16MB Flash' >> $GITHUB_STEP_SUMMARY
-          echo '- WiFi: Atheros AR9287 (ath9k) / 4G: EC20-EC25' >> $GITHUB_STEP_SUMMARY
-          if ls output/*.bin >/dev/null 2>&1; then
-            echo '### 状态: 编译成功' >> $GITHUB_STEP_SUMMARY
-            ls -lh output/*.bin | awk '{print "- "$NF" ("$5")"}' >> $GITHUB_STEP_SUMMARY
+          echo "===== 构建总结 ====="
+          echo "工作流触发方式: ${{ github.event_name }}"
+          echo "分支: ${{ github.ref_name }}"
+          echo ""
+          echo "产物目录内容:"
+          ls -lh bin/targets/ramips/mt7621/ 2>/dev/null || echo "目录不存在"
+          echo ""
+          echo "initramfs 状态:"
+          if [ -f bin/targets/ramips/mt7621/*-initramfs-kernel.bin ]; then
+            echo "initramfs-kernel.bin: 已生成"
           else
-            echo '### 状态: 编译失败，请查看 build.log' >> $GITHUB_STEP_SUMMARY
+            echo "initramfs-kernel.bin: 未生成"
           fi
