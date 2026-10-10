@@ -131,4 +131,4 @@ jobs:
             echo "initramfs-kernel.bin: 已生成"
           else
             echo "initramfs-kernel.bin: 未生成"
-          fi
+          fi 
